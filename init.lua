@@ -43,7 +43,7 @@ What is Kickstart?
 
 Kickstart Guide:
 
-  TODO: The very first thing you should do is to run the command `:Tutor` in Neovim.
+  TODO: The very first thing you should do is to run the orderlines command `:Tutor` in Neovim.
 
     If you don't know what this means, type the following:
       - <escape key>
@@ -90,8 +90,77 @@ P.S. You can delete this when you're done too. It's your config now! :)
 vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
 
+vim.filetype.add {
+  extension = {
+    h = 'c',
+  },
+}
+-- Toggle bottom terminal with Ctrl + \
+local term_win = nil
+local term_buf = nil
+
+local function close_term()
+  if term_win and vim.api.nvim_win_is_valid(term_win) then
+    vim.api.nvim_win_close(term_win, true)
+    term_win = nil
+  end
+end
+
+local function toggle_term()
+  -- if it's open, close it
+  if term_win and vim.api.nvim_win_is_valid(term_win) then
+    close_term()
+    return
+  end
+
+  -- open a bottom split
+  vim.cmd 'belowright split'
+  term_win = vim.api.nvim_get_current_win()
+
+  -- make it 1/4 height
+  local full_h = vim.api.nvim_win_get_height(0)
+  vim.api.nvim_win_set_height(term_win, math.floor(full_h * 0.25))
+
+  -- reuse buffer if we have it
+  if term_buf and vim.api.nvim_buf_is_valid(term_buf) then
+    vim.api.nvim_win_set_buf(term_win, term_buf)
+  else
+    vim.cmd 'terminal'
+    term_buf = vim.api.nvim_get_current_buf()
+  end
+
+  vim.cmd 'startinsert'
+end
+
+-- toggle with Ctrl + \
+vim.keymap.set('n', '<C-\\>', toggle_term, { noremap = true, silent = true })
+vim.keymap.set('t', '<C-\\>', toggle_term, { noremap = true, silent = true })
+
+-- 1) if a window closes and ONLY our term is left, close it too
+vim.api.nvim_create_autocmd('WinClosed', {
+  callback = function()
+    vim.schedule(function()
+      if vim.fn.winnr '$' == 1 and term_win and vim.api.nvim_win_is_valid(term_win) then
+        close_term()
+      end
+    end)
+  end,
+})
+
+-- 2) specifically catch :q, :wq, :x, etc.
+-- QuitPre runs right before a quit caused by those commands
+vim.api.nvim_create_autocmd('QuitPre', {
+  callback = function()
+    -- if more than one window is open, and our terminal is one of them,
+    -- close the terminal so it doesn't become the only leftover window
+    if vim.fn.winnr '$' > 1 then
+      close_term()
+    end
+  end,
+})
+
 -- Set to true if you have a Nerd Font installed and selected in the terminal
-vim.g.have_nerd_font = false
+vim.g.have_nerd_font = true
 
 -- [[ Setting options ]]
 -- See `:help vim.o`
@@ -99,10 +168,15 @@ vim.g.have_nerd_font = false
 --  For more options, you can see `:help option-list`
 
 -- Make line numbers default
-vim.o.number = true
+-- vim.o.number = true
 -- You can also add relative line numbers, to help with jumping.
 --  Experiment for yourself to see if you like it!
--- vim.o.relativenumber = true
+vim.o.relativenumber = true
+
+-- Use 4 spaces for tabs everywhere
+vim.opt.tabstop = 4 -- how many spaces a <Tab> counts for
+vim.opt.shiftwidth = 4 -- how many spaces to use for autoindent
+vim.opt.expandtab = true -- convert tabs to spaces
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.o.mouse = 'a'
@@ -461,6 +535,16 @@ require('lazy').setup({
       end, { desc = '[S]earch [N]eovim files' })
     end,
   },
+  -- install with yarn or npm
+  {
+    'iamcco/markdown-preview.nvim',
+    cmd = { 'MarkdownPreviewToggle', 'MarkdownPreview', 'MarkdownPreviewStop' },
+    build = 'cd app && yarn install',
+    init = function()
+      vim.g.mkdp_filetypes = { 'markdown' }
+    end,
+    ft = { 'markdown' },
+  },
 
   -- LSP Plugins
   {
@@ -671,7 +755,17 @@ require('lazy').setup({
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
-        -- clangd = {},
+        clangd = {
+          cmd = {
+            'clangd',
+            '--compile-commands-dir=build',
+            '--fallback-style=LLVM',
+            '--enable-config', -- allows it to read .clangd files
+          },
+          init_options = {
+            fallbackFlags = { '-std=c99' },
+          },
+        },
         -- gopls = {},
         -- pyright = {},
         -- rust_analyzer = {},
@@ -720,6 +814,7 @@ require('lazy').setup({
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
       require('mason-lspconfig').setup {
+        cmd = { 'clangd' },
         ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
         automatic_installation = false,
         handlers = {
@@ -744,7 +839,11 @@ require('lazy').setup({
       {
         '<leader>f',
         function()
-          require('conform').format { async = true, lsp_format = 'fallback' }
+          -- force conform, don't let LSP swallow it
+          require('conform').format {
+            async = true,
+            lsp_format = 'never',
+          }
         end,
         mode = '',
         desc = '[F]ormat buffer',
@@ -752,31 +851,75 @@ require('lazy').setup({
     },
     opts = {
       notify_on_error = false,
+      -- run on save
       format_on_save = function(bufnr)
-        -- Disable "format_on_save lsp_fallback" for languages that don't
-        -- have a well standardized coding style. You can add additional
-        -- languages here or re-enable it for the disabled ones.
-        local disable_filetypes = { c = true, cpp = true }
+        local disable_filetypes = { cpp = true } -- keep this if you want
         if disable_filetypes[vim.bo[bufnr].filetype] then
           return nil
-        else
-          return {
-            timeout_ms = 500,
-            lsp_format = 'fallback',
-          }
         end
+        return {
+          timeout_ms = 30000,
+          -- IMPORTANT: do NOT let LSP eat the format
+          lsp_format = 'never',
+        }
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
-        -- Conform can also run multiple formatters sequentially
-        -- python = { "isort", "black" },
-        --
-        -- You can use 'stop_after_first' to run the first available formatter from the list
-        -- javascript = { "prettierd", "prettier", stop_after_first = true },
+        c = { 'clang-format' },
+        h = { 'clang-format' },
+        cpp = { 'clang-format' },
+        python = { 'black' },
+        sql = { 'sql_formatter' },
+      },
+      formatters = {
+        sql_formatter = {
+          command = 'sql-formatter',
+          args = {
+            '--language',
+            'sqlite',
+            '--tab-width',
+            '4',
+            '--keyword-case',
+            'upper',
+          },
+        },
+        ['clang-format'] = {
+          command = 'clang-format',
+          args = {
+            '-style=file',
+            -- change this if your file is in ~/.clang-format instead
+            '-assume-filename=' .. vim.fn.expand '~/.clang-format',
+          },
+        },
       },
     },
   },
 
+  {
+    'nvim-neo-tree/neo-tree.nvim',
+    branch = 'v3.x',
+    dependencies = {
+      'nvim-lua/plenary.nvim',
+      'nvim-tree/nvim-web-devicons',
+      'MunifTanjim/nui.nvim',
+    },
+    init = function()
+      vim.g.loaded_netrw = 1
+      vim.g.loaded_netrwPlugin = 1
+    end,
+    config = function()
+      require('neo-tree').setup {
+        close_if_last_window = true,
+        filesystem = {
+          follow_current_file = true,
+          hijack_netrw_behavior = 'open_default',
+        },
+      }
+
+      -- toggle Neo-tree with <leader>e
+      vim.keymap.set('n', '\\', ':Neotree toggle<CR>', { desc = 'Toggle Neo-tree' })
+    end,
+  },
   { -- Autocompletion
     'saghen/blink.cmp',
     event = 'VimEnter',
@@ -836,7 +979,7 @@ require('lazy').setup({
         --
         -- See :h blink-cmp-config-keymap for defining your own keymap
         preset = 'default',
-
+        ['<Tab>'] = { 'accept', 'fallback' }, -- press Tab to confirm the selected item
         -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
         --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
       },
@@ -874,6 +1017,26 @@ require('lazy').setup({
       -- Shows a signature help window while you type arguments for a function
       signature = { enabled = true },
     },
+  },
+
+  {
+    'mfussenegger/nvim-lint',
+    config = function()
+      local lint = require 'lint'
+
+      lint.linters_by_ft = {
+        c = { 'clangtidy' }, -- or "cppcheck" if you prefer
+        cpp = { 'clangtidy' },
+        py = { 'ruff' },
+      }
+
+      -- run automatically on save
+      vim.api.nvim_create_autocmd({ 'BufWritePost' }, {
+        callback = function()
+          require('lint').try_lint()
+        end,
+      })
+    end,
   },
 
   { -- You can easily change to a different colorscheme.
@@ -938,6 +1101,7 @@ require('lazy').setup({
       --  Check out: https://github.com/echasnovski/mini.nvim
     end,
   },
+
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
     build = ':TSUpdate',
@@ -964,6 +1128,14 @@ require('lazy').setup({
     --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
   },
 
+  {
+    'windwp/nvim-autopairs',
+    event = 'InsertEnter',
+    opts = {
+      check_ts = true, -- enables Treesitter-based pairing
+      disable_filetype = { 'TelescopePrompt', 'vim' },
+    },
+  },
   -- The following comments only work if you have downloaded the kickstart repo, not just copy pasted the
   -- init.lua. If you want these files, they are in the repository, so you can just download them and
   -- place them in the correct locations.
