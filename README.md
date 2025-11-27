@@ -1,5 +1,10 @@
 # kickstart.nvim
 
+## My Preface
+
+I must say that this is meant to be a "just works" setup of nvim kickstart which I have
+built on an as-needed basis as I dont have the time anymore to be stuck in configuration hell.
+
 ## Introduction
 
 A starting point for Neovim that is:
