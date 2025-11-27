@@ -320,6 +320,37 @@ rtp:prepend(lazypath)
 --
 -- NOTE: Here is where you install your plugins.
 require('lazy').setup({
+
+  {
+    'brianhuster/live-preview.nvim',
+    cmd = { 'LivePreview', 'LivePreviewStop' },
+    config = function()
+      require('live-preview').setup {
+        browser = 'default', -- or "firefox", "chrome", etc
+      }
+    end,
+  },
+
+  {
+    'NvChad/nvim-colorizer.lua',
+    event = 'BufReadPre',
+    config = function()
+      require('colorizer').setup {
+        filetypes = { 'html', 'css', 'javascript' },
+        user_default_options = {
+          RGB = true, -- #RGB hex codes
+          RRGGBB = true, -- #RRGGBB hex codes
+          RRGGBBAA = true, -- #RRGGBBAA hex codes
+          AARRGGBB = false, -- 0xAARRGGBB hex codes
+          rgb_fn = true, -- CSS rgb() and rgba()
+          hsl_fn = true, -- CSS hsl() and hsla()
+          tailwind = true, -- TailwindCSS colors
+          names = false, -- "Blue" "Red" etc
+          mode = 'background', -- highlight style
+        },
+      }
+    end,
+  },
   -- NOTE: Plugins can be added with a link (or for a github repo: 'owner/repo' link).
   'NMAC427/guess-indent.nvim', -- Detect tabstop and shiftwidth automatically
 
