@@ -95,70 +95,6 @@ vim.filetype.add {
     h = 'c',
   },
 }
--- Toggle bottom terminal with Ctrl + \
-local term_win = nil
-local term_buf = nil
-
-local function close_term()
-  if term_win and vim.api.nvim_win_is_valid(term_win) then
-    vim.api.nvim_win_close(term_win, true)
-    term_win = nil
-  end
-end
-
-local function toggle_term()
-  -- if it's open, close it
-  if term_win and vim.api.nvim_win_is_valid(term_win) then
-    close_term()
-    return
-  end
-
-  -- open a bottom split
-  vim.cmd 'belowright split'
-  term_win = vim.api.nvim_get_current_win()
-
-  -- make it 1/4 height
-  local full_h = vim.api.nvim_win_get_height(0)
-  vim.api.nvim_win_set_height(term_win, math.floor(full_h * 0.25))
-
-  -- reuse buffer if we have it
-  if term_buf and vim.api.nvim_buf_is_valid(term_buf) then
-    vim.api.nvim_win_set_buf(term_win, term_buf)
-  else
-    vim.cmd 'terminal'
-    term_buf = vim.api.nvim_get_current_buf()
-  end
-
-  vim.cmd 'startinsert'
-end
-
--- toggle with Ctrl + \
-vim.keymap.set('n', '<C-\\>', toggle_term, { noremap = true, silent = true })
-vim.keymap.set('t', '<C-\\>', toggle_term, { noremap = true, silent = true })
-
--- 1) if a window closes and ONLY our term is left, close it too
-vim.api.nvim_create_autocmd('WinClosed', {
-  callback = function()
-    vim.schedule(function()
-      if vim.fn.winnr '$' == 1 and term_win and vim.api.nvim_win_is_valid(term_win) then
-        close_term()
-      end
-    end)
-  end,
-})
-
--- 2) specifically catch :q, :wq, :x, etc.
--- QuitPre runs right before a quit caused by those commands
-vim.api.nvim_create_autocmd('QuitPre', {
-  callback = function()
-    -- if more than one window is open, and our terminal is one of them,
-    -- close the terminal so it doesn't become the only leftover window
-    if vim.fn.winnr '$' > 1 then
-      close_term()
-    end
-  end,
-})
-
 -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.g.have_nerd_font = true
 
@@ -259,10 +195,10 @@ vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagn
 vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
 
 -- TIP: Disable arrow keys in normal mode
--- vim.keymap.set('n', '<left>', '<cmd>echo "Use h to move!!"<CR>')
--- vim.keymap.set('n', '<right>', '<cmd>echo "Use l to move!!"<CR>')
--- vim.keymap.set('n', '<up>', '<cmd>echo "Use k to move!!"<CR>')
--- vim.keymap.set('n', '<down>', '<cmd>echo "Use j to move!!"<CR>')
+vim.keymap.set('n', '<left>', '<cmd>echo "Use h to move!!"<CR>')
+vim.keymap.set('n', '<right>', '<cmd>echo "Use l to move!!"<CR>')
+vim.keymap.set('n', '<up>', '<cmd>echo "Use k to move!!"<CR>')
+vim.keymap.set('n', '<down>', '<cmd>echo "Use j to move!!"<CR>')
 
 -- Keybinds to make split navigation easier.
 --  Use CTRL+<hjkl> to switch between windows
@@ -531,6 +467,7 @@ require('lazy').setup({
 
       -- See `:help telescope.builtin`
       local builtin = require 'telescope.builtin'
+      vim.g.mapleader = '|'
       vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
       vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
       vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
