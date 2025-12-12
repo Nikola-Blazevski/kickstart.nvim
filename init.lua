@@ -728,10 +728,20 @@ require('lazy').setup({
             'clangd',
             '--compile-commands-dir=build',
             '--fallback-style=LLVM',
-            '--enable-config', -- allows it to read .clangd files
+            '--enable-config', -- allow .clangd
+            '--clang-tidy', -- optional: keeps tidy on, can disable
+            '--completion-style=detailed',
+            '--header-insertion=never',
+            '--log=error',
+            -- Disable unsafe warnings directly:
+            '--warnings-as-errors=-unsafe-buffer-usage',
           },
           init_options = {
-            fallbackFlags = { '-std=c99' },
+            fallbackFlags = {
+              '-std=c99',
+              '-Wno-unsafe-buffer-usage', -- turn off scanf unsafe warning
+              '-Wno-clang-diagnostic-unsafe-buffer-usage',
+            },
           },
         },
         -- gopls = {},
